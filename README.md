@@ -1,3 +1,7 @@
+
+
+https://github.com/user-attachments/assets/d5498a4d-abae-488f-b398-d8b1be5a1b9d
+
 # Jungle Wagering Processor — Distributed ACID Wallet & Ledger Engine
 
 Motor transacional distribuído para processamento de apostas (*wagering*) de alta concorrência (`BET`, `WIN`, `LOSS`, `REFUND`, `ROLLBACK`), construído com **Bun**, **TypeScript 5 (Strict Mode)**, **NestJS**, **MikroORM**, **PostgreSQL 16** e **AWS SQS (LocalStack)**.
