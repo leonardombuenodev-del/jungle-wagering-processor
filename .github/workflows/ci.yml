@@ -1,0 +1,74 @@
+name: CI — Build, Typecheck & Distributed Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    name: Bun Strict Typecheck & Test Suite (Postgres + SQS)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: jungle
+          POSTGRES_PASSWORD: jungle_password
+          POSTGRES_DB: jungle_wagering
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      localstack:
+        image: localstack/localstack:3.4
+        env:
+          SERVICES: sqs
+          AWS_DEFAULT_REGION: us-east-1
+        ports:
+          - 4566:4566
+
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: "5433"
+      DB_USER: jungle
+      DB_PASSWORD: jungle_password
+      DB_NAME: jungle_wagering
+      AWS_REGION: us-east-1
+      AWS_ENDPOINT_URL: http://127.0.0.1:4566
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun Runtime
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Wait for LocalStack SQS
+        run: |
+          for i in {1..30}; do
+            if curl -s http://127.0.0.1:4566/_localstack/health | grep -q "sqs"; then
+              echo "LocalStack SQS is ready!"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Run TypeScript Strict Typecheck
+        run: bun run typecheck
+
+      - name: Run Full Test Suite (Unit + Integration + 8 Concurrency Scenarios)
+        run: bun test
