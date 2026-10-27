@@ -2,12 +2,57 @@
 
 https://github.com/user-attachments/assets/d5498a4d-abae-488f-b398-d8b1be5a1b9d
 
+![CI Status](https://github.com/leonardombuenodev-del/jungle-wagering-processor/actions/workflows/ci.yml/badge.svg)
+![Runtime](https://img.shields.io/badge/Runtime-Bun_1.x-black?logo=bun)
+![Framework](https://img.shields.io/badge/Framework-NestJS_10-E0234E?logo=nestjs)
+![Database](https://img.shields.io/badge/Database-PostgreSQL_16-4169E1?logo=postgresql&logoColor=white)
+![Architecture](https://img.shields.io/badge/Architecture-Hexagonal_%2B_DDD-blue)
+
 # Jungle Wagering Processor — Distributed ACID Wallet & Ledger Engine
 
 Motor transacional distribuído para processamento de apostas (*wagering*) de alta concorrência (`BET`, `WIN`, `LOSS`, `REFUND`, `ROLLBACK`), construído com **Bun**, **TypeScript 5 (Strict Mode)**, **NestJS**, **MikroORM**, **PostgreSQL 16** e **AWS SQS (LocalStack)**.
 
 ---
+---
 
+## 🏛️ Arquitetura & Fluxo Transacional ACID
+
+``` mermaid
+flowchart TB
+    subgraph Entrypoints ["Canais de Entrada (At-Least-Once)"]
+        HTTP["POST /wagering/transactions<br/>(Header: Idempotency-Key)"]
+        SQS_IN["AWS SQS FIFO<br/>(wager-transactions.fifo)"]
+        DLQ["AWS SQS DLQ<br/>(wager-transactions-dlq.fifo)"]
+    end
+
+    subgraph App ["Core Application (Hexagonal Architecture)"]
+        GUARD["ProviderAuthGuard<br/>(ProviderIdentityPort)"]
+        CONSUMER["WagerSqsConsumer<br/>(Ack only after SQL Commit)"]
+        UC["SubmitWagerTransactionUseCase<br/>(Deterministic SHA-256 Payload Hash)"]
+    end
+
+    subgraph ACID ["Transação SQL Única (PostgreSQL 16)"]
+        direction TB
+        INBOX["1. InboxMessage<br/>(Deduplicação SQS)"]
+        SAVEPOINT["2. WagerTransaction<br/>(SAVEPOINT sp_insert_wager_tx)"]
+        LOCK["3. Wallet Aggregate<br/>(SELECT ... FOR UPDATE)"]
+        LEDGER["4. WalletLedgerEntry<br/>(Append-Only + Trigger Imutável)"]
+        OUTBOX["5. OutboxMessage<br/>(Transactional Outbox)"]
+    end
+
+    subgraph Workers ["Workers Distribuídos (FOR UPDATE SKIP LOCKED)"]
+        OUTBOX_W["OutboxPublisherWorker<br/>(Backoff Exponencial)"]
+        PENDING_W["PendingReferenceWorker<br/>(Resolve ROLLBACK/REFUND fora de ordem)"]
+    end
+
+    HTTP --> GUARD --> UC
+    SQS_IN --> CONSUMER --> UC
+    CONSUMER -. "Falha Permanente / Max Retries" .-> DLQ
+    UC ==> ACID
+    OUTBOX -. "Polling Concorrente" .-> OUTBOX_W
+    SAVEPOINT -. "Status: PENDING_REFERENCE" .-> PENDING_W
+    PENDING_W --> UC
+```
 ## 1. Destaques Arquiteturais & Garantias Financeiras
 
 * **Hexagonal Architecture + DDD Tático**:
