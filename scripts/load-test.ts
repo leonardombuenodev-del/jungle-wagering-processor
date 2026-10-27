@@ -97,6 +97,12 @@ async function runLoadTest() {
     }
   }
 
+  const metricsText = await fetch(`${baseUrl}/metrics`).then((r) => r.text());
+  const lockConflictsMatch = metricsText.match(/wagering_lock_conflicts_total\{[^}]*\}\s+(\d+)/);
+  const outboxLagMatch = metricsText.match(/wagering_outbox_lag_seconds\s+([0-9.]+)/);
+  const lockConflicts = lockConflictsMatch ? lockConflictsMatch[1] : "0";
+  const outboxLag = outboxLagMatch ? Number(outboxLagMatch[1]).toFixed(3) : "0.000";
+
   console.log("\n📊 === LOAD TEST RESULTS ===");
   console.log(`Total Requests     : ${totalRequests}`);
   console.log(`Concurrency        : ${walletCount} active hot wallets`);
@@ -106,6 +112,8 @@ async function runLoadTest() {
   console.log(`Latency p95        : ${percentile(latencies, 95).toFixed(2)} ms`);
   console.log(`Latency p99        : ${percentile(latencies, 99).toFixed(2)} ms`);
   console.log(`Success / Errors   : ${successCount} / ${errorCount}`);
+  console.log(`Lock Conflicts     : ${lockConflicts} (serialized via row-level FOR UPDATE)`);
+  console.log(`Outbox Lag         : ${outboxLag}s`);
   console.log(`Ledger Invariant   : ${allConsistent ? "✅ 100% CONSISTENT" : "❌ DIVERGENCE"}`);
 
   await app.close();
